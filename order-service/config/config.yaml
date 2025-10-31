@@ -1,0 +1,19 @@
+server:
+  port: 8081
+
+postgres:
+  host: postgres
+  port: 5432
+  user: demo_user
+  password: demo_pass
+  dbname: orders_db
+  sslmode: disable
+
+kafka:
+  brokers:
+    - 'order-service-kafka-1:9092'
+  topic: my-new-topic10
+  group_id: order-service-group
+
+cache:
+  size: 1000 # max items

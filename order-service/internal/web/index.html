@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Order Viewer</title>
+<style>
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+.card { max-width: 760px; padding: 16px 20px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+input { padding: 10px 12px; font-size: 16px; width: 360px; }
+button { padding: 10px 16px; font-size: 16px; cursor: pointer; }
+pre { background: #111; color: #0f0; padding: 12px; border-radius: 8px; overflow: auto; }
+.row { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.hint { color:#666; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+<h2>Поиск заказа</h2>
+<div class="row">
+<input id="orderId" placeholder="введите order_uid" />
+<button onclick="lookup()">Найти</button>
+<button onclick="fillSample()">Пример</button>
+</div>
+<div class="hint">Запрос идёт к API: <code>GET /order/&lt;order_uid&gt;</code></div>
+<h3>Ответ</h3>
+<pre id="out">нет данных</pre>
+</div>
+
+
+<script>
+const SAMPLE_ID = "b563feb7b2b84b6test";
+
+
+function fillSample() {
+document.getElementById('orderId').value = SAMPLE_ID;
+lookup();
+}
+
+
+async function lookup() {
+const id = document.getElementById('orderId').value.trim();
+if (!id) { alert('Введите order_uid'); return; }
+const res = await fetch(`/order/${encodeURIComponent(id)}`);
+const data = await res.json();
+document.getElementById('out').textContent = JSON.stringify(data, null, 2);
+}
+</script>
+</body>
+</html>
