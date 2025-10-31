@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,82 +15,90 @@ import (
 	"order-service/internal/cache"
 	"order-service/internal/db"
 	"order-service/internal/kafka"
+	"order-service/internal/logger"
 	"order-service/internal/models"
-
-	
 )
 
 func main() {
-	cfg := config.LoadConfig("config/config.yaml") // путь исправлен
+	log := &logger.StdLogger{}
 
+	cfg := config.LoadConfig("config/config.yaml")
+
+	// подключаем Postgres с retry
 	dbConn, err := db.Connect(fmt.Sprintf(
 		"user=%s password=%s dbname=%s host=%s port=%d sslmode=%s",
 		cfg.Postgres.User, cfg.Postgres.Password, cfg.Postgres.DBName, cfg.Postgres.Host, cfg.Postgres.Port, cfg.Postgres.SSLMode,
-	))
+	), log)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("Failed to connect Postgres", err)
+		os.Exit(1)
 	}
 
-	// создаём таблицу, если нет
 	if err := dbConn.CreateTable(); err != nil {
-		log.Fatal(err)
+		log.Error("Failed to create table", err)
+		os.Exit(1)
 	}
 
 	c := cache.New(cfg.Cache.Size)
 	orders, _ := dbConn.LoadAllOrders()
 	c.Load(orders)
-	log.Printf("cache warmup: %d orders loaded", c.Len())
+	log.Info(fmt.Sprintf("Cache warmup: %d orders loaded", c.Len()))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	kafkaReader := kafka.StartConsumer(ctx, dbConn, c, cfg.Kafka.Brokers, cfg.Kafka.Topic, cfg.Kafka.GroupID)
+	if kafkaReader == nil {
+		log.Error("Kafka consumer did not start", fmt.Errorf("consumer nil"))
+		os.Exit(1)
+	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/order/", orderHandler(c))
+	mux.HandleFunc("/order/", orderHandler(c, log))
 	mux.Handle("/", http.FileServer(http.Dir("./internal/web")))
 
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Server.Port), Handler: mux}
 
 	go func() {
-		log.Printf("HTTP server listening on :%d", cfg.Server.Port)
+		log.Info(fmt.Sprintf("HTTP server listening on :%d", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s", err)
+			log.Error("Server listen error", err)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutdown signal received")
+	log.Info("Shutdown signal received")
 
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
 	if err := srv.Shutdown(ctxShutdown); err != nil {
-		log.Fatal("server forced to shutdown:", err)
+		log.Error("Server forced to shutdown", err)
 	}
+
 	cancel()
 	kafkaReader.Close()
 	dbConn.Close()
-	log.Println("server exited gracefully")
+	log.Info("Server exited gracefully")
 
 	// загружаем sample JSON
 	sampleData, err := os.ReadFile("assets/sample_order.json")
 	if err != nil {
-		log.Printf("failed to read sample orders: %v", err)
+		log.Error("Failed to read sample orders", err)
 	} else {
 		var sampleOrders []models.Order
 		if err := json.Unmarshal(sampleData, &sampleOrders); err != nil {
-			log.Printf("failed to unmarshal sample orders: %v", err)
+			log.Error("Failed to unmarshal sample orders", err)
 		} else {
 			dbConn.InsertOrders(sampleOrders)
 			c.Load(sampleOrders)
-			log.Printf("loaded %d sample orders into cache & db", len(sampleOrders))
+			log.Info(fmt.Sprintf("Loaded %d sample orders into cache & db", len(sampleOrders)))
 		}
 	}
-
 }
 
-func orderHandler(c *cache.Cache) http.HandlerFunc {
+func orderHandler(c *cache.Cache, log logger.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimPrefix(r.URL.Path, "/order/")
 		if id == "" {

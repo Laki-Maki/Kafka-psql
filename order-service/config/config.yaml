@@ -11,7 +11,7 @@ postgres:
 
 kafka:
   brokers:
-    - 'order-service-kafka-1:9092'
+    - 'kafka:9092'
   topic: my-new-topic10
   group_id: order-service-group
 

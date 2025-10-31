@@ -1,7 +1,6 @@
 package models
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -11,9 +10,9 @@ type Order struct {
 	OrderUID          string    `json:"order_uid" validate:"required"`
 	TrackNumber       string    `json:"track_number" validate:"required"`
 	Entry             string    `json:"entry"`
-	Delivery          Delivery  `json:"delivery" validate:"required,dive"`
-	Payment           Payment   `json:"payment" validate:"required,dive"`
-	Items             []Item    `json:"items" validate:"required,dive"`
+	Delivery          Delivery  `json:"delivery" validate:"required"`  // убрали dive
+	Payment           Payment   `json:"payment" validate:"required"`   // убрали dive
+	Items             []Item    `json:"items,omitempty" validate:"dive"` // добавили omitempty
 	Locale            string    `json:"locale"`
 	InternalSignature string    `json:"internal_signature"`
 	CustomerID        string    `json:"customer_id"`
@@ -35,16 +34,16 @@ type Delivery struct {
 }
 
 type Payment struct {
-	Transaction   string `json:"transaction"`
-	RequestID     string `json:"request_id"`
-	Currency      string `json:"currency"`
-	Provider      string `json:"provider"`
-	Amount        int    `json:"amount"`
-	PaymentDt     int64  `json:"payment_dt"`
-	Bank          string `json:"bank"`
-	DeliveryCost  int    `json:"delivery_cost"`
-	GoodsTotal    int    `json:"goods_total"`
-	CustomFee     int    `json:"custom_fee"`
+	Transaction  string `json:"transaction"`
+	RequestID    string `json:"request_id"`
+	Currency     string `json:"currency"`
+	Provider     string `json:"provider"`
+	Amount       int    `json:"amount"`
+	PaymentDt    int64  `json:"payment_dt"`
+	Bank         string `json:"bank"`
+	DeliveryCost int    `json:"delivery_cost"`
+	GoodsTotal   int    `json:"goods_total"`
+	CustomFee    int    `json:"custom_fee"`
 }
 
 type Item struct {
@@ -62,11 +61,6 @@ type Item struct {
 }
 
 func (o *Order) Validate() error {
-	v := validator.New()
-	if err := v.Struct(o); err != nil { return err }
-
-	if o.Payment.GoodsTotal+o.Payment.DeliveryCost != o.Payment.Amount {
-		return fmt.Errorf("payment amount mismatch")
-	}
-	return nil
+	validate := validator.New()
+	return validate.Struct(o)
 }
